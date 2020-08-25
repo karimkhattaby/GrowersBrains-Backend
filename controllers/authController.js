@@ -9,7 +9,7 @@ const sendEmail = require('../utils/email');
 
 const createSignToken = (statusCode, user, res) => {
   const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
-    expiresIn: process.env.JWT_EXPIRES_IN,
+    expiresIn: process.env.JWT_EXPIRES_IN
   });
 
   const cookieOptions = {
@@ -26,7 +26,7 @@ const createSignToken = (statusCode, user, res) => {
   user.password = undefined;
   res.status(statusCode).json({
     status: 'success',
-    token,
+    token: token,
     data: {
       user,
     },
@@ -40,7 +40,6 @@ exports.signup = catchAsync(async (req, res, next) => {
     password: req.body.password,
     passwordConfirm: req.body.passwordConfirm,
   });
-
   createSignToken(201, user, res);
 });
 

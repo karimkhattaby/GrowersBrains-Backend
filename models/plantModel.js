@@ -11,7 +11,11 @@ const plantSchema = new mongoose.Schema({
     type: String,
     required: [true, 'A plant must have a description'],
   },
-  images: [String],
+  images: {
+    required: false,
+    type: [mongoose.Schema.ObjectId],
+    ref: 'PlantImage'
+  },
   plantingTips: String,
   createdAt: {
     type: Date,

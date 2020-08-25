@@ -1,18 +1,34 @@
 const multer = require('multer');
 const Plant = require('../models/plantModel');
+const GridFsStorage = require('multer-gridfs-storage');
+const mongoose = require('mongoose');
+const PlantImage = require('../models/plantImageModel');
 
 const catchAsync = require('../utils/catchAsync');
 const AppError = require('../utils/appError');
 
-const multerStorage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, 'img/plants');
-  },
-  filename: function (req, file, cb) {
-    const extension = file.mimetype.split('/')[1];
-    //the name of the uploaded plant will be `plant-growerId-Date.now().extension`
-    cb(null, `plant-${req.user.id}-${Date.now()}.${extension}`);
-  },
+//seting connectin to store user plantPic
+const connection = mongoose.connect(process.env.MONGO_URI, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+  useFindAndModify: false,
+  useCreateIndex: true,
+});
+const storage = new GridFsStorage({
+  db: connection,
+  file: (req, file) => {
+    if (file.mimetype === 'image/jpeg' || file.mimetype === "image/png") {
+      return {
+        bucketName: "plantImages",
+        filename: file.originalname,
+        metadata: {
+          author: req.body.email,
+        }
+      };
+    } else {
+      return null;
+    }
+  }
 });
 
 const multerFilter = (req, file, cb) => {
@@ -25,10 +41,27 @@ const multerFilter = (req, file, cb) => {
 
 const upload = multer({
   fileFilter: multerFilter,
-  storage: multerStorage,
+  storage: storage,
 });
 
-exports.uploadPlantImages = upload.fields([{ name: 'images', maxCount: 5 }]);
+exports.plantImageUploader = upload.single('plantPic');
+
+//creates an endpoint to get the image easily with the plantImage model
+exports.uploadPlantImage = catchAsync(async (req, res, next) => {
+  
+  const plantPic = await PlantImage.create({
+    fileName: req.file.filename,
+    owner: req.user.id,
+    plantPicId: req.file.id
+  })
+  
+  res.status(200).json({
+    status: 'succes',
+    data: {
+      plantPic
+    }
+  })
+});
 
 exports.getAllPlants = catchAsync(async (req, res, next) => {
   const plants = await Plant.find();

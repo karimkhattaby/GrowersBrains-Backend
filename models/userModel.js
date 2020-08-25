@@ -75,7 +75,6 @@ const userSchema = new mongoose.Schema(
       enum: ['admin', 'user', 'grower'],
       default: 'user',
     },
-    photo: String,
     passwordChangedAt: Date,
     passwordResetToken: String,
     passwordResetExpires: Date,
@@ -87,15 +86,15 @@ const userSchema = new mongoose.Schema(
 );
 
 //use the mongoose `pre` middleware to hash the password before saved it to the db
-userSchema.pre('save', async function (next) {
-  //if the password was modified call the next middleware
-  if (!this.isModified('password')) return next();
+// userSchema.pre('save', async function (next) {
+//   //if the password was modified call the next middleware
+//   if (!this.isModified('password')) return next();
 
-  //otherwise hash the password & delete the passwordConfirm field
-  this.password = await bcrypt.hash(this.password, 12);
-  this.passwordConfirm = undefined;
-  next();
-});
+//   //otherwise hash the password & delete the passwordConfirm field
+//   this.password = await bcrypt.hash(this.password, 12);
+//   this.passwordConfirm = undefined;
+//   next();
+// });
 userSchema.pre('save', async function (next) {
   if (!this.isModified('password') || this.isNew) return next();
 

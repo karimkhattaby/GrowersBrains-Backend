@@ -6,7 +6,8 @@ const {
   getPlant,
   updatePlant,
   deletePlant,
-  uploadPlantImages,
+  uploadPlantImage,
+  plantImageUploader
 } = require('../controllers/plantController');
 
 const { protect, restrictTo } = require('../controllers/authController');
@@ -14,12 +15,16 @@ const { protect, restrictTo } = require('../controllers/authController');
 router
   .route('/')
   .get(getAllPlants)
-  .post(protect, restrictTo('grower'), uploadPlantImages, createPlant);
+  .post(protect, restrictTo('grower'), createPlant);
 
 router
   .route('/:id')
   .get(getPlant)
-  .patch(protect, uploadPlantImages, updatePlant)
+  .patch(protect, updatePlant)
   .delete(protect, restrictTo('grower'), deletePlant);
+
+router
+  .route('/:id/postPlant')
+  .post(protect, plantImageUploader, uploadPlantImage);
 
 module.exports = router;
