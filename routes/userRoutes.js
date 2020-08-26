@@ -5,9 +5,9 @@ const {
   updateMe,
   getMe,
   uploadUserPhoto,
-  profilePicGetter,
-  profilePicResizer,
-  profilePicUploader,
+  uploadImageMiddleware,
+  resizeUserPhoto,
+  getUserProfileImage,
 } = require('../controllers/userController');
 const {
   protect,
@@ -21,7 +21,14 @@ const {
 
 router.post('/signup', signup);
 router.post('/login', login);
-router.post('/uploadProfilePic', protect, profilePicUploader, uploadUserPhoto)
+router.post(
+  '/profile-image',
+  protect,
+  uploadImageMiddleware,
+  resizeUserPhoto,
+  uploadUserPhoto
+);
+router.get('/profile-image/:filename', protect, getUserProfileImage);
 router.patch('/updateMe', protect, updateMe);
 router.get('/me', protect, getMe);
 
