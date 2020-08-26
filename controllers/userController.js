@@ -1,87 +1,103 @@
 const multer = require('multer');
-// const sharp = require('sharp');
-const GridFsStorage = require('multer-gridfs-storage');
+const sharp = require('sharp');
+// const GridFsStorage = require('multer-gridfs-storage');
 const mongoose = require('mongoose');
 const User = require('../models/userModel');
 const ProfilePic = require('../models/profilePicModel');
+const AppError = require('../utils/appError');
 const catchAsync = require('../utils/catchAsync');
 
-//seting connectin to store user profilePic
-const connection = mongoose.connect(process.env.MONGO_URI, {
+const { Readable } = require('stream');
+
+let gfs;
+const connect = mongoose.createConnection(process.env.MONGO_URI, {
   useNewUrlParser: true,
   useUnifiedTopology: true,
-  useFindAndModify: false,
-  useCreateIndex: true,
 });
-const storage = new GridFsStorage({
-  db: connection,
-  file: (req, file) => {
-    if (file.mimetype === 'image/jpeg' || file.mimetype === "image/png") {
-      return {
-        bucketName: "profilePics",
-        filename: file.originalname,
-        metadata: {
-          author: req.body.email
-        }
-      };
-    } else {
-      return null;
-    }
+
+connect.once('open', () => {
+  // initialize stream
+  gfs = new mongoose.mongo.GridFSBucket(connect.db, {
+    bucketName: 'profilePics',
+  });
+});
+
+const multerFilter = (req, file, cb) => {
+  if (file.mimetype.startsWith('image')) {
+    cb(null, true);
+  } else {
+    cb(new AppError('Not an image! Please upload only images!', 400));
   }
+};
+
+const multerStorage = multer.memoryStorage();
+
+exports.uploadImageMiddleware = multer({
+  storage: multerStorage,
+  fileFilter: multerFilter,
+}).single('image');
+
+exports.resizeUserPhoto = catchAsync(async (req, res, next) => {
+  if (!req.file) return next();
+
+  // name of user photo will be user-userId-curent_date (to avoid same name of users photos)
+  req.file.filename = `user-${req.user.id}-${Date.now()}.jpeg`;
+
+  req.buffer = await sharp(req.file.buffer)
+    .resize(500, 500)
+    .toFormat('jpeg')
+    .jpeg({ quality: 90 })
+    .toBuffer();
+
+  next();
 });
 
-// const memStorage = multer.memoryStorage();
-
-// const upload = multer({storage: memStorage});
-//upload img tp DB
-// exports.profilePicGetter = upload.single('profilePic');
-
-// exports.profilePicResizer = catchAsync(async (req, res, next) => {
-  // req.file.originalname = `user-${req.user.id}-${Date.now()}.jpeg`;
-  // req.file.buffer = await resizeUserPhoto(req,res,next);
-  // req.file.mimetype = 'image/jpeg'
-//   next()
-// })
-
-//Stores the profile pic in the MongoDb
-const mongoDBUpload = multer({ storage: storage });
-exports.profilePicUploader = mongoDBUpload.single('profilePic');
-
-//creates an endpoint to get the image easily with the profilePic model
 exports.uploadUserPhoto = catchAsync(async (req, res, next) => {
-  const { email } = req.body;
-  const profilePicExist = await ProfilePic.findOne({ author: email })
-  
-  if (profilePicExist) {
-    //Delete that pic first
-  }
-  const profilePic = await ProfilePic.create({
-    fileName: req.file.filename,
-    owner: req.user.id,
-    profilePicId: req.file.id
-  })
-  res.status(200).json({
-    status: 'success',
-    data: {
-      profilePic
-    }
-  })
+  const readablePhotoStream = new Readable();
+  readablePhotoStream.push(req.buffer);
+  readablePhotoStream.push(null);
+
+  let uploadStream = gfs.openUploadStream(req.file.filename);
+  let id = uploadStream.id;
+  readablePhotoStream.pipe(uploadStream);
+  uploadStream.on('error', () => {
+    return res.status(500).json({ message: 'Error uploading file' });
+  });
+  uploadStream.on('finish', async () => {
+    const profilePicture = await ProfilePic.create({
+      fileName: req.file.filename,
+      owner: req.user.id,
+    });
+
+    //Store the profilePictureId on the User Model , so when we can use user.photo.fileName
+    //when requesting users/profile-image/:filename
+
+    await User.findByIdAndUpdate(
+      req.user.id,
+      { photo: profilePicture._id },
+      { new: true, runValidators: true }
+    );
+
+    return res.status(201).json({
+      status: 'success',
+      message: 'Image uploaded successfully',
+    });
+  });
 });
 
+exports.getUserProfileImage = (req, res) => {
+  gfs.find({ filename: req.params.filename }).toArray((err, files) => {
+    console.log(files);
+    if (!files[0] || files.length === 0) {
+      return res.status(200).json({
+        status: 'fail',
+        message: 'No files available',
+      });
+    }
 
-//This would be used to resize image, still have to figure it out
-// const resizeUserPhoto = async (req, res, next) => {
-//   const buffer = await sharp(req.file.buffer)
-//     .resize(500, 500)
-//     .toFormat('jpeg')
-//     .jpeg({ quality: 90 })
-//     .toBuffer()
-//     .then(data => {
-//       return data;
-//     })
-//     .catch(err =>console.error(err));
-//   return buffer;
-// };
+    gfs.openDownloadStreamByName(req.params.filename).pipe(res);
+  });
+};
 
 const filterRequestObj = async (reqBodyObj, ...allowedFields) => {
   const filteredObj = {};
@@ -104,8 +120,6 @@ exports.getMe = catchAsync(async (req, res, next) => {
 exports.updateMe = catchAsync(async (req, res, next) => {
   //To avoid that a malicious user change his role to an admin and grant all the access to the app
   const filteredBody = await filterRequestObj(req.body, 'name', 'email', 'bio');
-  //Save image name to the database
-  if (req.file) filteredBody.photo = req.file.filename;
   // we use req.user from the protect middellware
   const updatedUser = await User.findByIdAndUpdate(req.user.id, filteredBody, {
     new: true,
