@@ -75,6 +75,10 @@ const userSchema = new mongoose.Schema(
       enum: ['admin', 'user', 'grower'],
       default: 'user',
     },
+    photo: {
+      type: mongoose.Schema.ObjectId,
+      ref: 'ProfilePic',
+    },
     passwordChangedAt: Date,
     passwordResetToken: String,
     passwordResetExpires: Date,
@@ -152,10 +156,12 @@ userSchema.pre(/^find/, async function (next) {
   this.populate({
     path: 'articles',
     select: 'title content ratingsAverage ratingsQuantity createdAt',
-  }).populate({
-    path: 'plants',
-    select: 'images description name createdAt',
-  });
+  })
+    .populate({
+      path: 'plants',
+      select: 'images description name createdAt',
+    })
+    .populate({ path: 'photo', select: 'fileName createdAt' });
   next();
 });
 
